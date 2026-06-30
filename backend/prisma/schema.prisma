@@ -1,6 +1,6 @@
 datasource db {
-  provider = "sqlite"
-  url      = "file:./dev.db"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 generator client {
@@ -37,7 +37,7 @@ model Guard {
   userId                 String?     @unique
   user                   User?       @relation(fields: [userId], references: [id])
   fullName               String
-  photoUrl               String
+  photoUrl               String?
   phone                  String
   address                String
   emergencyContact       String
@@ -65,6 +65,7 @@ model Guard {
   attendances            Attendance[]
   patrolLogs             PatrolLog[]
   patrolRoutes           PatrolRoute[]
+  patrolRecords          PatrolRecord[]
 }
 
 model Client {
@@ -133,7 +134,11 @@ model Attendance {
   checkOutLongitude      Float?
   checkInMethod          String    // "GPS", "QR", "SUPERVISOR_APPROVAL"
   checkOutMethod         String?   // "GPS", "QR", "SUPERVISOR_APPROVAL"
-  photoUrl               String    // Verification selfie url
+  checkInLocation        String?
+  checkOutLocation       String?
+  photoUrl               String?   // Verification selfie url
+  status                 String    @default("ON_TIME")
+  verifiedStatus         Boolean   @default(false)
   isLate                 Boolean   @default(false)
   isAbsent               Boolean   @default(false)
   
@@ -158,6 +163,25 @@ model PatrolRoute {
 
   checkpoints     PatrolCheckpoint[]
   patrolLogs      PatrolLog[]
+  patrolRecords   PatrolRecord[]
+}
+
+model PatrolRecord {
+  id                     String      @id @default(uuid())
+  routeId                String
+  route                  PatrolRoute @relation(fields: [routeId], references: [id])
+  guardId                String
+  guard                  Guard       @relation(fields: [guardId], references: [id])
+  startTime              DateTime
+  endTime                DateTime?
+  status                 String
+  scannedCheckpoints     String      @default("[]")
+  missedCheckpoints      String      @default("[]")
+  completionPercentage   Float       @default(0)
+  incidentReportId       String?
+  generalNotes           String?
+  createdAt              DateTime    @default(now())
+  updatedAt              DateTime    @updatedAt
 }
 
 model PatrolCheckpoint {
@@ -194,12 +218,15 @@ model PatrolLog {
 
 model Incident {
   id                     String    @id @default(uuid())
+  title                  String
   incidentType           String    // "THEFT", "TRESPASS", "ASSAULT", "FIRE", "MEDICAL", "ASSET_DAMAGE", "OTHER"
   occurrenceTime         DateTime
+  status                 String    @default("OPEN")
+  reportedAt             DateTime  @default(now())
   siteId                 String
   site                   Site      @relation(fields: [siteId], references: [id])
-  reportedBySupervisorId String
-  reportedBySupervisor   User      @relation("IncidentReporter", fields: [reportedBySupervisorId], references: [id])
+  reporterId             String
+  reporter               User      @relation("IncidentReporter", fields: [reporterId], references: [id])
   guardsInvolved         String    // Comma-separated names or guard ids
   description            String
   severity               String    // "LOW", "MEDIUM", "HIGH", "CRITICAL"
@@ -208,7 +235,7 @@ model Incident {
   voiceNotes             String    // Comma-separated URLs or JSON
   witnesses              String    // JSON string
   actionsTaken           String
-  investigationStatus    String    // "OPEN", "UNDER_INVESTIGATION", "RESOLVED", "CLOSED"
+  investigationStatus    String    @default("OPEN") // "OPEN", "UNDER_INVESTIGATION", "RESOLVED", "CLOSED"
   resolutionNotes        String?
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt

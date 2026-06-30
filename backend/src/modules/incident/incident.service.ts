@@ -10,22 +10,27 @@ export class IncidentService {
     const site = await this.prisma.site.findUnique({ where: { id: dto.siteId } });
     if (!site) throw new NotFoundException('Site not found');
 
-    const reporter = await this.prisma.guard.findUnique({ where: { id: dto.reporterId } });
+    const reporter = await this.prisma.user.findUnique({ where: { id: dto.reporterId } });
     if (!reporter) throw new NotFoundException('Reporter not found');
 
     return this.prisma.incident.create({
       data: {
         title: dto.title,
         description: dto.description,
-        type: dto.type,
+        incidentType: dto.type,
         severity: dto.severity,
         status: 'OPEN',
+        occurrenceTime: new Date(),
         siteId: dto.siteId,
         reporterId: dto.reporterId,
         reportedAt: new Date(),
-        location: JSON.stringify({ lat: dto.latitude, lng: dto.longitude }),
-        mediaUrls: JSON.stringify(dto.mediaUrls || []),
-        involvedParties: JSON.stringify(dto.involvedParties || []),
+        guardsInvolved: JSON.stringify(dto.involvedParties || []),
+        photos: JSON.stringify(dto.mediaUrls || []),
+        videos: '[]',
+        voiceNotes: '[]',
+        witnesses: '[]',
+        actionsTaken: '',
+        investigationStatus: 'OPEN',
       },
     });
   }
@@ -51,14 +56,14 @@ export class IncidentService {
     const where: any = {};
     if (query.siteId) where.siteId = query.siteId;
     if (query.status) where.status = query.status;
-    if (query.type) where.type = query.type;
+    if (query.type) where.incidentType = query.type;
 
     const [data, total] = await Promise.all([
       this.prisma.incident.findMany({
         where, skip, take: limit, orderBy: { reportedAt: 'desc' },
         include: {
           site: { select: { id: true, name: true, client: { select: { companyName: true } } } },
-          reporter: { select: { id: true, fullName: true } },
+          reporter: { select: { id: true, firstName: true, lastName: true } },
         },
       }),
       this.prisma.incident.count({ where }),

@@ -56,9 +56,12 @@ export class AttendanceService {
         guardId: dto.guardId,
         siteId: dto.siteId,
         checkInTime: new Date(),
+        checkInLatitude: dto.latitude,
+        checkInLongitude: dto.longitude,
         checkInLocation: JSON.stringify({ lat: dto.latitude, lng: dto.longitude }),
+        checkInMethod: 'GPS',
         status: isWithinGeofence ? 'ON_TIME' : 'FLAGGED',
-        photoUrl: dto.photoUrl,
+        photoUrl: dto.photoUrl ?? '',
         verifiedStatus: isWithinGeofence,
       },
     });
