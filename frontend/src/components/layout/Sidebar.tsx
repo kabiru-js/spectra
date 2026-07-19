@@ -19,6 +19,7 @@ import {
   ChevronRight,
   LogOut,
   Search,
+  UserCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/providers/AuthProvider';
@@ -33,6 +34,7 @@ const navItems = [
   { label: 'Patrols', href: '/patrols', icon: Route },
   { label: 'Analytics', href: '/analytics', icon: BarChart3 },
   { label: 'Reports', href: '/reports', icon: FileText },
+  { label: 'Account', href: '/account', icon: UserCircle },
 ];
 
 export default function Sidebar() {
