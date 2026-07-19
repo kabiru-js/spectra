@@ -61,7 +61,7 @@ export class PatrolService {
       select: { id: true },
     });
 
-    const record = await this.prisma.patrolRecord.findFirst({
+    const patrolRecord = await this.prisma.patrolRecord.findFirst({
       where: {
         id: dto.patrolRecordId,
         ...(guard ? { guardId: guard.id } : {}),
@@ -69,11 +69,11 @@ export class PatrolService {
       include: { route: { include: { checkpoints: true } } },
     });
 
-    if (!record) throw new NotFoundException('Patrol record not found');
-    if (record.status === 'COMPLETED')
+    if (!patrolRecord) throw new NotFoundException('Patrol record not found');
+    if (patrolRecord.status === 'COMPLETED')
       throw new BadRequestException('Patrol already completed');
 
-    const expectedCheckpoints = record.route.checkpoints.map(
+    const expectedCheckpoints = patrolRecord.route.checkpoints.map(
       (checkpoint: { id: string }) => checkpoint.id,
     );
     const scannedIds = dto.scans.map(
@@ -88,7 +88,7 @@ export class PatrolService {
         ? (scannedIds.length / expectedCheckpoints.length) * 100
         : 0;
 
-    return this.prisma.patrolRecord.update({
+    const record = await this.prisma.patrolRecord.update({
       where: { id: dto.patrolRecordId },
       data: {
         endTime: new Date(),
@@ -100,6 +100,34 @@ export class PatrolService {
         generalNotes: dto.generalNotes,
       },
     });
+
+    // Update guard performance score based on patrol completion
+    if (record.guardId) {
+      const totalPatrols = await this.prisma.patrolRecord.count({
+        where: { guardId: record.guardId },
+      });
+      const completedPatrols = await this.prisma.patrolRecord.count({
+        where: { guardId: record.guardId, status: 'COMPLETED' },
+      });
+      const patrolRate =
+        totalPatrols > 0
+          ? Math.round((completedPatrols / totalPatrols) * 100)
+          : 100;
+
+      // Blend with existing performance score (70% existing, 30% patrol)
+      const guard = await this.prisma.guard.findUnique({
+        where: { id: record.guardId },
+      });
+      if (guard) {
+        const newScore = Math.round(guard.performanceScore * 0.7 + patrolRate * 0.3);
+        await this.prisma.guard.update({
+          where: { id: record.guardId },
+          data: { performanceScore: Math.max(0, Math.min(100, newScore)) },
+        });
+      }
+    }
+
+    return record;
   }
 
   async getPatrolHistory(query: {

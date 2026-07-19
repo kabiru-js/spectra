@@ -21,6 +21,8 @@ export class DashboardService {
       todayAttendance,
       todayLate,
       todayAbsent,
+      totalPatrols,
+      completedPatrols,
     ] = await Promise.all([
       this.prisma.guard.count({ where: { organizationId } }),
       this.prisma.guard.count({ where: { organizationId, status: 'ACTIVE' } }),
@@ -54,6 +56,12 @@ export class DashboardService {
       this.prisma.attendance.count({
         where: { guard: { organizationId }, isAbsent: true },
       }),
+      this.prisma.patrolRecord.count({
+        where: { route: { site: { organizationId } } },
+      }),
+      this.prisma.patrolRecord.count({
+        where: { route: { site: { organizationId } }, status: 'COMPLETED' },
+      }),
     ]);
 
     const attendanceRate =
@@ -74,6 +82,8 @@ export class DashboardService {
       todayLate,
       todayAbsent,
       attendanceRate,
+      totalPatrols,
+      completedPatrols,
     };
   }
 
@@ -93,6 +103,20 @@ export class DashboardService {
       _count: { id: true },
     });
     return sites.map((s) => ({ riskLevel: s.riskLevel, count: s._count.id }));
+  }
+
+  async getPatrolStats(organizationId: string) {
+    const total = await this.prisma.patrolRecord.count({
+      where: { route: { site: { organizationId } } },
+    });
+    const completed = await this.prisma.patrolRecord.count({
+      where: { route: { site: { organizationId } }, status: 'COMPLETED' },
+    });
+    return {
+      total,
+      completed,
+      rate: total > 0 ? Math.round((completed / total) * 100) : 100,
+    };
   }
 
   async getAttendanceTrend(organizationId: string) {

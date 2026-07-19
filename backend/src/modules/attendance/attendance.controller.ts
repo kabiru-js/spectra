@@ -35,11 +35,12 @@ export class AttendanceController {
     @Query('limit') limit?: string,
     @Query('siteId') siteId?: string,
     @Query('date') date?: string,
+    @Query('guardId') guardId?: string,
   ) {
     return this.attendanceService.getAttendanceHistory({
       page: page ? parseInt(page) : undefined,
       limit: limit ? parseInt(limit) : undefined,
-      siteId, date, organizationId: user.organizationId,
+      siteId, date, guardId, organizationId: user.organizationId,
     });
   }
 }

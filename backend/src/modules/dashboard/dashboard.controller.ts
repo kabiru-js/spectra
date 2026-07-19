@@ -34,6 +34,12 @@ export class DashboardController {
     return this.dashboardService.getAttendanceTrend(user.organizationId);
   }
 
+  @Get('patrol-stats')
+  @Roles('ADMIN', 'EMPLOYEE')
+  getPatrolStats(@CurrentUser() user: any) {
+    return this.dashboardService.getPatrolStats(user.organizationId);
+  }
+
   @Get('recent-activities')
   @Roles('ADMIN', 'EMPLOYEE')
   getRecentActivities(@CurrentUser() user: any) {

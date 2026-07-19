@@ -26,4 +26,13 @@ export class ReportsController {
 
     res.end(buffer);
   }
+
+  @Get('site/:siteId/weekly/pdf')
+  @Roles('ADMIN')
+  async getWeeklySiteReport(@Param('siteId') siteId: string, @Res() res: Response) {
+    const pdf = await this.reportsService.generateWeeklySiteReport(siteId);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=weekly-report-${siteId}.pdf`);
+    res.send(pdf);
+  }
 }
