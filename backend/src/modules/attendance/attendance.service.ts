@@ -77,7 +77,7 @@ export class AttendanceService {
     const isWithinGeofence = distance <= 200; // 200m radius
 
     // 4. Create attendance record
-    return this.prisma.attendance.create({
+    const record = await this.prisma.attendance.create({
       data: {
         guardId: guard.id,
         siteId: site.id,
@@ -91,6 +91,23 @@ export class AttendanceService {
         verifiedStatus: isWithinGeofence,
       },
     });
+
+    // Update guard performance score based on attendance rate
+    const lateCount = await this.prisma.attendance.count({
+      where: { guardId: guard.id, isLate: true },
+    });
+    const totalCount = await this.prisma.attendance.count({
+      where: { guardId: guard.id },
+    });
+    const rate = totalCount > 0
+      ? Math.round(((totalCount - lateCount) / totalCount) * 100)
+      : 100;
+    await this.prisma.guard.update({
+      where: { id: guard.id },
+      data: { performanceScore: Math.max(0, Math.min(100, rate)) },
+    });
+
+    return record;
   }
 
   async checkOut(dto: CheckOutDto, user: { id: string; role: string; organizationId: string }) {
@@ -115,18 +132,22 @@ export class AttendanceService {
       where: { id: record.id },
       data: {
         checkOutTime: new Date(),
+        checkOutLatitude: dto.latitude,
+        checkOutLongitude: dto.longitude,
         checkOutLocation: JSON.stringify({ lat: dto.latitude, lng: dto.longitude }),
+        checkOutMethod: 'GPS',
       },
     });
   }
 
-  async getAttendanceHistory(query: { page?: number; limit?: number; siteId?: string; date?: string; organizationId: string }) {
+  async getAttendanceHistory(query: { page?: number; limit?: number; siteId?: string; date?: string; guardId?: string; organizationId: string }) {
     const page = query.page || 1;
     const limit = query.limit || 20;
     const skip = (page - 1) * limit;
 
     const where: any = { guard: { organizationId: query.organizationId } };
     if (query.siteId) where.siteId = query.siteId;
+    if (query.guardId) where.guardId = query.guardId;
     if (query.date) {
       const startOfDay = new Date(query.date);
       startOfDay.setHours(0, 0, 0, 0);

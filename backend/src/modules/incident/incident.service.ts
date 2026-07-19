@@ -83,6 +83,7 @@ export class IncidentService {
       where: { id },
       data: {
         status: dto.status,
+        investigationStatus: dto.status,
         resolutionNotes: dto.resolutionNotes,
       },
     });

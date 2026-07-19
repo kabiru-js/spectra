@@ -90,10 +90,10 @@ export class GuardService {
         currentShift: dto.currentShift,
         assignedSiteId: dto.assignedSiteId,
         assignedSupervisorId: dto.assignedSupervisorId,
-        trainingRecords: '[]',
-        certificates: '[]',
-        backgroundVerification: '{"status":"PENDING"}',
-        disciplinaryHistory: '[]',
+        trainingRecords: dto.trainingRecords || '[]',
+        certificates: dto.certificates || '[]',
+        backgroundVerification: dto.backgroundVerification || '{"status":"PENDING"}',
+        disciplinaryHistory: dto.disciplinaryHistory || '[]',
       },
     });
   }
@@ -114,12 +114,88 @@ export class GuardService {
     });
   }
 
-  async deactivate(id: string, organizationId: string) {
+  async remove(id: string, organizationId: string) {
     await this.findOne(id, organizationId);
-    return this.prisma.guard.update({
-      where: { id },
-      data: { status: 'INACTIVE' },
+    const result = await this.prisma.$transaction(async (tx) => {
+      // Delete attendance records
+      await tx.attendance.deleteMany({ where: { guardId: id } });
+      // Delete patrol records
+      await tx.patrolRecord.deleteMany({ where: { guardId: id } });
+      // Delete patrol logs
+      await tx.patrolLog.deleteMany({ where: { guardId: id } });
+      // Unlink guard from patrol routes
+      await tx.patrolRoute.updateMany({
+        where: { assignedGuardId: id },
+        data: { assignedGuardId: null },
+      });
+      // Delete the guard
+      return tx.guard.delete({ where: { id } });
     });
+
+    // Write audit log (fire-and-forget)
+    this.prisma.auditLog.create({
+      data: {
+        userId: '',
+        action: 'GUARD_DELETED',
+        entity: 'Guard',
+        entityId: id,
+        ipAddress: '',
+        userAgent: '',
+      },
+    }).catch(() => {});
+
+    return result;
+  }
+
+  async bulkAssign(dto: { siteId: string; guardIds: string[] }, organizationId: string) {
+    const site = await this.prisma.site.findFirst({
+      where: { id: dto.siteId, organizationId },
+    });
+    if (!site) throw new NotFoundException('Site not found');
+
+    await this.prisma.guard.updateMany({
+      where: { id: { in: dto.guardIds }, organizationId },
+      data: { assignedSiteId: dto.siteId },
+    });
+
+    return { message: `${dto.guardIds.length} guards assigned to ${site.name}` };
+  }
+
+  async findUnassigned(organizationId: string) {
+    return this.prisma.guard.findMany({
+      where: { organizationId, assignedSiteId: null, status: 'ACTIVE' },
+      select: { id: true, fullName: true, currentShift: true },
+    });
+  }
+
+  async findWithAttendanceStats(date: string, organizationId: string) {
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const guards = await this.prisma.guard.findMany({
+      where: { organizationId },
+      include: {
+        assignedSite: { select: { id: true, name: true } },
+        attendances: {
+          where: { checkInTime: { gte: startOfDay, lte: endOfDay } },
+          take: 1,
+          orderBy: { checkInTime: 'desc' },
+        },
+      },
+    });
+
+    return guards.map(g => ({
+      id: g.id,
+      fullName: g.fullName,
+      status: g.status,
+      currentShift: g.currentShift,
+      siteName: g.assignedSite?.name || null,
+      checkedIn: g.attendances.length > 0,
+      checkInTime: g.attendances[0]?.checkInTime || null,
+      checkInStatus: g.attendances[0]?.status || null,
+    }));
   }
 
   async getStats(organizationId: string) {

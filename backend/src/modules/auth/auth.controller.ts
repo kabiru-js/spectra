@@ -3,6 +3,7 @@ import {
   Post,
   Body,
   Get,
+  Patch,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -106,6 +107,15 @@ export class AuthController {
     });
 
     return { message: 'Logged out successfully' };
+  }
+
+  @Patch('me')
+  @UseGuards(JwtAuthGuard)
+  async updateProfile(
+    @CurrentUser() user: any,
+    @Body() dto: { firstName?: string; lastName?: string; phone?: string; email?: string },
+  ) {
+    return this.authService.updateProfile(user.id, dto);
   }
 
   @Get('me')

@@ -84,6 +84,41 @@ export class ClientService {
 
   async remove(id: string, organizationId: string) {
     await this.findOne(id, organizationId);
-    return this.prisma.client.delete({ where: { id } });
+    const result = await this.prisma.$transaction(async (tx) => {
+      // Find all sites belonging to this client
+      const sites = await tx.site.findMany({ where: { clientId: id } });
+      const siteIds = sites.map((s) => s.id);
+
+      if (siteIds.length > 0) {
+        // Unlink guards from these sites
+        await tx.guard.updateMany({
+          where: { assignedSiteId: { in: siteIds } },
+          data: { assignedSiteId: null },
+        });
+        // Delete attendance records for these sites
+        await tx.attendance.deleteMany({
+          where: { siteId: { in: siteIds } },
+        });
+        // Delete the sites
+        await tx.site.deleteMany({ where: { id: { in: siteIds } } });
+      }
+
+      // Delete the client
+      return tx.client.delete({ where: { id } });
+    });
+
+    // Write audit log (fire-and-forget)
+    this.prisma.auditLog.create({
+      data: {
+        userId: '',
+        action: 'CLIENT_DELETED',
+        entity: 'Client',
+        entityId: id,
+        ipAddress: '',
+        userAgent: '',
+      },
+    }).catch(() => {});
+
+    return result;
   }
 }

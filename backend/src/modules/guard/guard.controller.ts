@@ -57,6 +57,24 @@ export class GuardController {
     return this.guardService.getStats(user.organizationId);
   }
 
+  @Get('unassigned')
+  @Roles('ADMIN')
+  async findUnassigned(@CurrentUser() user: any) {
+    return this.guardService.findUnassigned(user.organizationId);
+  }
+
+  @Get('attendance-stats')
+  @Roles('ADMIN')
+  async findWithAttendanceStats(@CurrentUser() user: any, @Query('date') date?: string) {
+    return this.guardService.findWithAttendanceStats(date || new Date().toISOString().split('T')[0], user.organizationId);
+  }
+
+  @Post('bulk-assign')
+  @Roles('ADMIN')
+  async bulkAssign(@Body() dto: { siteId: string; guardIds: string[] }, @CurrentUser() user: any) {
+    return this.guardService.bulkAssign(dto, user.organizationId);
+  }
+
   @Get(':id')
   @Roles('ADMIN')
   async findOne(@Param('id') id: string, @CurrentUser() user: any) {
@@ -92,7 +110,8 @@ export class GuardController {
 
   @Delete(':id')
   @Roles('ADMIN')
-  async deactivate(@Param('id') id: string, @CurrentUser() user: any) {
-    return this.guardService.deactivate(id, user.organizationId);
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async remove(@Param('id') id: string, @CurrentUser() user: any) {
+    await this.guardService.remove(id, user.organizationId);
   }
 }
