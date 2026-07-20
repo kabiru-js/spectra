@@ -16,6 +16,8 @@ export class ReportsService {
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
 
     const [
       todayAttendance,
@@ -23,21 +25,41 @@ export class ReportsService {
       todayIncidents,
       lateCount,
       absentCount,
+      todayPatrols,
     ] = await Promise.all([
       this.prisma.attendance.count({
-        where: { siteId, checkInTime: { gte: today } },
+        where: {
+          siteId,
+          checkInTime: { gte: today, lt: tomorrow },
+          status: { not: 'ABSENT' },
+        },
       }),
       this.prisma.guard.count({
         where: { assignedSiteId: siteId, status: 'ACTIVE' },
       }),
       this.prisma.incident.count({
-        where: { siteId, reportedAt: { gte: today } },
+        where: { siteId, reportedAt: { gte: today, lt: tomorrow } },
       }),
       this.prisma.attendance.count({
-        where: { siteId, checkInTime: { gte: today }, isLate: true },
+        where: {
+          siteId,
+          checkInTime: { gte: today, lt: tomorrow },
+          isLate: true,
+        },
       }),
       this.prisma.attendance.count({
-        where: { siteId, isAbsent: true },
+        where: {
+          siteId,
+          checkInTime: { gte: today, lt: tomorrow },
+          status: 'ABSENT',
+        },
+      }),
+      this.prisma.patrolRecord.count({
+        where: {
+          route: { siteId },
+          startTime: { gte: today, lt: tomorrow },
+          status: 'COMPLETED',
+        },
       }),
     ]);
 
@@ -61,8 +83,9 @@ export class ReportsService {
       doc.moveDown(2);
 
       // Site Info
+      const clientName = site.client?.companyName || 'Deleted Client';
       doc.fontSize(12).font('Helvetica-Bold').text(`Site: ${site.name}`);
-      doc.font('Helvetica').text(`Client: ${site.client.companyName}`);
+      doc.font('Helvetica').text(`Client: ${clientName}`);
       doc.text(`Date: ${new Date().toLocaleDateString()}`);
       doc.text(`Risk Level: ${site.riskLevel}`);
       doc.moveDown(2);
@@ -74,6 +97,7 @@ export class ReportsService {
         .text(`Present: ${todayAttendance} / ${totalGuards}`);
       doc.text(`Late: ${lateCount}`);
       doc.text(`Absent: ${absentCount}`);
+      doc.text(`Today's Patrols Completed: ${todayPatrols}`);
       doc.moveDown();
 
       // Incident Log
@@ -146,8 +170,9 @@ export class ReportsService {
       doc.fontSize(16).text('Weekly Operations Report', { align: 'center' });
       doc.moveDown(2);
 
+      const clientName = site.client?.companyName || 'Deleted Client';
       doc.fontSize(12).font('Helvetica-Bold').text(`Site: ${site.name}`);
-      doc.font('Helvetica').text(`Client: ${site.client.companyName}`);
+      doc.font('Helvetica').text(`Client: ${clientName}`);
       doc.text(`Period: ${weekAgo.toLocaleDateString()} - ${new Date().toLocaleDateString()}`);
       doc.text(`Risk Level: ${site.riskLevel}`);
       doc.moveDown(2);

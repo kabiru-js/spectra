@@ -6,6 +6,12 @@ import {
 import { PrismaService } from '../../database/prisma.service';
 import { StartPatrolDto, SubmitPatrolLogDto } from './dto/patrol.dto';
 
+// Configurable performance scoring weights
+const PERFORMANCE_WEIGHTS = {
+  ATTENDANCE: 0.6,
+  PATROL: 0.4,
+};
+
 @Injectable()
 export class PatrolService {
   constructor(private prisma: PrismaService) {}
@@ -40,7 +46,17 @@ export class PatrolService {
     if (!guardId)
       throw new NotFoundException('Guard profile not found for this employee');
 
-    return this.prisma.patrolRecord.create({
+    // Prevent duplicate in-progress patrols for the same guard
+    const existingPatrol = await this.prisma.patrolRecord.findFirst({
+      where: { guardId, status: 'IN_PROGRESS' },
+    });
+    if (existingPatrol) {
+      throw new BadRequestException(
+        'Guard already has an in-progress patrol. Complete it first.',
+      );
+    }
+
+    const record = await this.prisma.patrolRecord.create({
       data: {
         routeId: dto.routeId,
         guardId,
@@ -50,6 +66,21 @@ export class PatrolService {
         missedCheckpoints: '[]',
       },
     });
+
+    // Write audit log (fire-and-forget)
+    this.prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        action: 'PATROL_STARTED',
+        entity: 'PatrolRecord',
+        entityId: record.id,
+        newValues: JSON.stringify({ routeId: dto.routeId, guardId }),
+        ipAddress: '',
+        userAgent: '',
+      },
+    }).catch(() => {});
+
+    return record;
   }
 
   async submitLog(
@@ -88,6 +119,42 @@ export class PatrolService {
         ? (scannedIds.length / expectedCheckpoints.length) * 100
         : 0;
 
+    // Create individual PatrolLog entries for each scanned checkpoint
+    for (const scan of dto.scans) {
+      await this.prisma.patrolLog.create({
+        data: {
+          patrolRouteId: patrolRecord.routeId,
+          checkpointId: scan.checkpointId,
+          guardId: patrolRecord.guardId,
+          scannedAt: new Date(scan.scanTime),
+          latitude: scan.latitude,
+          longitude: scan.longitude,
+          isLate: false,
+          isMissed: false,
+        },
+      });
+    }
+
+    // Create PatrolLog entries for missed checkpoints
+    for (const missedId of missedCheckpoints) {
+      const checkpoint = patrolRecord.route.checkpoints.find(
+        (cp) => cp.id === missedId,
+      );
+      if (checkpoint) {
+        await this.prisma.patrolLog.create({
+          data: {
+            patrolRouteId: patrolRecord.routeId,
+            checkpointId: missedId,
+            guardId: patrolRecord.guardId,
+            scannedAt: new Date(),
+            latitude: checkpoint.expectedLatitude,
+            longitude: checkpoint.expectedLongitude,
+            isMissed: true,
+          },
+        });
+      }
+    }
+
     const record = await this.prisma.patrolRecord.update({
       where: { id: dto.patrolRecordId },
       data: {
@@ -101,7 +168,7 @@ export class PatrolService {
       },
     });
 
-    // Update guard performance score based on patrol completion
+    // Update guard performance score using configurable weights
     if (record.guardId) {
       const totalPatrols = await this.prisma.patrolRecord.count({
         where: { guardId: record.guardId },
@@ -114,18 +181,39 @@ export class PatrolService {
           ? Math.round((completedPatrols / totalPatrols) * 100)
           : 100;
 
-      // Blend with existing performance score (70% existing, 30% patrol)
       const guard = await this.prisma.guard.findUnique({
         where: { id: record.guardId },
       });
       if (guard) {
-        const newScore = Math.round(guard.performanceScore * 0.7 + patrolRate * 0.3);
+        // Use configurable weights from PERFORMANCE_WEIGHTS
+        const newScore = Math.round(
+          guard.performanceScore * PERFORMANCE_WEIGHTS.ATTENDANCE +
+          patrolRate * PERFORMANCE_WEIGHTS.PATROL,
+        );
         await this.prisma.guard.update({
           where: { id: record.guardId },
           data: { performanceScore: Math.max(0, Math.min(100, newScore)) },
         });
       }
     }
+
+    // Write audit log (fire-and-forget)
+    this.prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        action: 'PATROL_COMPLETED',
+        entity: 'PatrolRecord',
+        entityId: record.id,
+        newValues: JSON.stringify({
+          completionPercentage,
+          totalCheckpoints: expectedCheckpoints.length,
+          scannedCheckpoints: scannedIds.length,
+          missedCheckpoints: missedCheckpoints.length,
+        }),
+        ipAddress: '',
+        userAgent: '',
+      },
+    }).catch(() => {});
 
     return record;
   }

@@ -66,7 +66,14 @@ export class GuardService {
       where,
       include: {
         assignedSite: true,
-        attendances: { take: 10, orderBy: { createdAt: 'desc' } },
+        assignedSupervisor: {
+          select: { id: true, firstName: true, lastName: true },
+        },
+        attendances: {
+          take: 10,
+          orderBy: { createdAt: 'desc' },
+          include: { site: { select: { name: true } } },
+        },
       },
     });
     if (!guard) throw new NotFoundException('Guard not found');
@@ -114,7 +121,7 @@ export class GuardService {
     });
   }
 
-  async remove(id: string, organizationId: string) {
+  async remove(id: string, organizationId: string, userId?: string) {
     await this.findOne(id, organizationId);
     const result = await this.prisma.$transaction(async (tx) => {
       // Delete attendance records
@@ -135,7 +142,7 @@ export class GuardService {
     // Write audit log (fire-and-forget)
     this.prisma.auditLog.create({
       data: {
-        userId: '',
+        userId: userId || '',
         action: 'GUARD_DELETED',
         entity: 'Guard',
         entityId: id,

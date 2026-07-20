@@ -94,7 +94,7 @@ export class SiteService {
     return this.prisma.site.update({ where: { id }, data: dto as any });
   }
 
-  async remove(id: string, organizationId: string) {
+  async remove(id: string, organizationId: string, userId?: string) {
     await this.findOne(id, organizationId);
     const result = await this.prisma.$transaction(async (tx) => {
       // Unlink all guards assigned to this site
@@ -133,7 +133,7 @@ export class SiteService {
     // Write audit log (fire-and-forget)
     this.prisma.auditLog.create({
       data: {
-        userId: '',
+        userId: userId || '',
         action: 'SITE_DELETED',
         entity: 'Site',
         entityId: id,

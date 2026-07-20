@@ -112,6 +112,6 @@ export class GuardController {
   @Roles('ADMIN')
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(@Param('id') id: string, @CurrentUser() user: any) {
-    await this.guardService.remove(id, user.organizationId);
+    await this.guardService.remove(id, user.organizationId, user.id);
   }
 }

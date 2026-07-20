@@ -82,7 +82,7 @@ export class ClientService {
     return this.prisma.client.update({ where: { id }, data });
   }
 
-  async remove(id: string, organizationId: string) {
+  async remove(id: string, organizationId: string, userId?: string) {
     await this.findOne(id, organizationId);
     const result = await this.prisma.$transaction(async (tx) => {
       // Find all sites belonging to this client
@@ -95,8 +95,23 @@ export class ClientService {
           where: { assignedSiteId: { in: siteIds } },
           data: { assignedSiteId: null },
         });
-        // Delete attendance records for these sites
+        // Delete attendance records, patrol routes, incidents for these sites
         await tx.attendance.deleteMany({
+          where: { siteId: { in: siteIds } },
+        });
+        await tx.patrolLog.deleteMany({
+          where: { patrolRoute: { siteId: { in: siteIds } } },
+        });
+        await tx.patrolRecord.deleteMany({
+          where: { route: { siteId: { in: siteIds } } },
+        });
+        await tx.patrolCheckpoint.deleteMany({
+          where: { patrolRoute: { siteId: { in: siteIds } } },
+        });
+        await tx.patrolRoute.deleteMany({
+          where: { siteId: { in: siteIds } },
+        });
+        await tx.incident.deleteMany({
           where: { siteId: { in: siteIds } },
         });
         // Delete the sites
@@ -110,7 +125,7 @@ export class ClientService {
     // Write audit log (fire-and-forget)
     this.prisma.auditLog.create({
       data: {
-        userId: '',
+        userId: userId || '',
         action: 'CLIENT_DELETED',
         entity: 'Client',
         entityId: id,

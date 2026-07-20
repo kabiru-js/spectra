@@ -27,6 +27,20 @@ export class AttendanceController {
     return this.attendanceService.checkOut(dto, user);
   }
 
+  @Post('mark-absent')
+  @Roles('ADMIN')
+  @HttpCode(HttpStatus.OK)
+  async markAbsent(
+    @CurrentUser() user: any,
+    @Body() dto: { date?: string },
+  ) {
+    const count = await this.attendanceService.markAbsentGuards(
+      user.organizationId,
+      dto.date,
+    );
+    return { message: `${count} guards marked as absent`, count };
+  }
+
   @Get('history')
   @Roles('ADMIN')
   async getHistory(
