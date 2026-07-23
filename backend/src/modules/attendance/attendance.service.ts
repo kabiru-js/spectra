@@ -242,6 +242,7 @@ export class AttendanceService {
             checkInTime: startOfDay,
             checkInLatitude: 0,
             checkInLongitude: 0,
+            checkInMethod: 'GPS',
             status: 'ABSENT',
             isAbsent: true,
           },
