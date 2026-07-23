@@ -67,6 +67,6 @@ export class ClientController {
   @Delete(':id')
   @Roles('ADMIN')
   async remove(@Param('id') id: string, @CurrentUser() user: any) {
-    return this.clientService.remove(id, user.organizationId);
+    return this.clientService.remove(id, user.organizationId, user.id);
   }
 }

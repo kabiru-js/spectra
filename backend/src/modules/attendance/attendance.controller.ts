@@ -27,6 +27,20 @@ export class AttendanceController {
     return this.attendanceService.checkOut(dto, user);
   }
 
+  @Post('mark-absent')
+  @Roles('ADMIN')
+  @HttpCode(HttpStatus.OK)
+  async markAbsent(
+    @CurrentUser() user: any,
+    @Body() dto: { date?: string },
+  ) {
+    const count = await this.attendanceService.markAbsentGuards(
+      user.organizationId,
+      dto.date,
+    );
+    return { message: `${count} guards marked as absent`, count };
+  }
+
   @Get('history')
   @Roles('ADMIN')
   async getHistory(
@@ -35,11 +49,12 @@ export class AttendanceController {
     @Query('limit') limit?: string,
     @Query('siteId') siteId?: string,
     @Query('date') date?: string,
+    @Query('guardId') guardId?: string,
   ) {
     return this.attendanceService.getAttendanceHistory({
       page: page ? parseInt(page) : undefined,
       limit: limit ? parseInt(limit) : undefined,
-      siteId, date, organizationId: user.organizationId,
+      siteId, date, guardId, organizationId: user.organizationId,
     });
   }
 }

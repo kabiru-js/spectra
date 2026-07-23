@@ -16,6 +16,8 @@ export class ReportsService {
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
 
     const [
       todayAttendance,
@@ -23,21 +25,41 @@ export class ReportsService {
       todayIncidents,
       lateCount,
       absentCount,
+      todayPatrols,
     ] = await Promise.all([
       this.prisma.attendance.count({
-        where: { siteId, checkInTime: { gte: today } },
+        where: {
+          siteId,
+          checkInTime: { gte: today, lt: tomorrow },
+          status: { not: 'ABSENT' },
+        },
       }),
       this.prisma.guard.count({
         where: { assignedSiteId: siteId, status: 'ACTIVE' },
       }),
       this.prisma.incident.count({
-        where: { siteId, reportedAt: { gte: today } },
+        where: { siteId, reportedAt: { gte: today, lt: tomorrow } },
       }),
       this.prisma.attendance.count({
-        where: { siteId, checkInTime: { gte: today }, isLate: true },
+        where: {
+          siteId,
+          checkInTime: { gte: today, lt: tomorrow },
+          isLate: true,
+        },
       }),
       this.prisma.attendance.count({
-        where: { siteId, isAbsent: true },
+        where: {
+          siteId,
+          checkInTime: { gte: today, lt: tomorrow },
+          status: 'ABSENT',
+        },
+      }),
+      this.prisma.patrolRecord.count({
+        where: {
+          route: { siteId },
+          startTime: { gte: today, lt: tomorrow },
+          status: 'COMPLETED',
+        },
       }),
     ]);
 
@@ -61,8 +83,9 @@ export class ReportsService {
       doc.moveDown(2);
 
       // Site Info
+      const clientName = site.client?.companyName || 'Deleted Client';
       doc.fontSize(12).font('Helvetica-Bold').text(`Site: ${site.name}`);
-      doc.font('Helvetica').text(`Client: ${site.client.companyName}`);
+      doc.font('Helvetica').text(`Client: ${clientName}`);
       doc.text(`Date: ${new Date().toLocaleDateString()}`);
       doc.text(`Risk Level: ${site.riskLevel}`);
       doc.moveDown(2);
@@ -74,6 +97,7 @@ export class ReportsService {
         .text(`Present: ${todayAttendance} / ${totalGuards}`);
       doc.text(`Late: ${lateCount}`);
       doc.text(`Absent: ${absentCount}`);
+      doc.text(`Today's Patrols Completed: ${todayPatrols}`);
       doc.moveDown();
 
       // Incident Log
@@ -99,6 +123,79 @@ export class ReportsService {
           750,
           { align: 'center', width: 500 },
         );
+
+      doc.end();
+    });
+
+    return pdfBuffer;
+  }
+
+  async generateWeeklySiteReport(siteId: string): Promise<Buffer> {
+    const site = await this.prisma.site.findUnique({
+      where: { id: siteId },
+      include: { client: true },
+    });
+    if (!site) throw new NotFoundException('Site not found');
+
+    const weekAgo = new Date();
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    weekAgo.setHours(0, 0, 0, 0);
+
+    const [
+      weeklyAttendance,
+      weeklyIncidents,
+      patrolCount,
+    ] = await Promise.all([
+      this.prisma.attendance.count({
+        where: { siteId, checkInTime: { gte: weekAgo } },
+      }),
+      this.prisma.incident.findMany({
+        where: { siteId, reportedAt: { gte: weekAgo } },
+        orderBy: { reportedAt: 'desc' },
+        select: { title: true, incidentType: true, severity: true, reportedAt: true },
+      }),
+      this.prisma.patrolRecord.count({
+        where: { route: { siteId }, startTime: { gte: weekAgo } },
+      }),
+    ]);
+
+    const pdfBuffer: Buffer = await new Promise((resolve) => {
+      const doc = new PDFDocument({ size: 'A4', margin: 50 });
+      const buffers: Buffer[] = [];
+      doc.on('data', buffers.push.bind(buffers));
+      doc.on('end', () => resolve(Buffer.concat(buffers)));
+
+      doc.fontSize(20).text('SPECTRA OPS', { align: 'center' });
+      doc.moveDown();
+      doc.fontSize(16).text('Weekly Operations Report', { align: 'center' });
+      doc.moveDown(2);
+
+      const clientName = site.client?.companyName || 'Deleted Client';
+      doc.fontSize(12).font('Helvetica-Bold').text(`Site: ${site.name}`);
+      doc.font('Helvetica').text(`Client: ${clientName}`);
+      doc.text(`Period: ${weekAgo.toLocaleDateString()} - ${new Date().toLocaleDateString()}`);
+      doc.text(`Risk Level: ${site.riskLevel}`);
+      doc.moveDown(2);
+
+      doc.fontSize(14).font('Helvetica-Bold').text('Weekly Summary');
+      doc.font('Helvetica').text(`Total Attendance Records: ${weeklyAttendance}`);
+      doc.text(`Total Patrols Completed: ${patrolCount}`);
+      doc.text(`Total Incidents Reported: ${weeklyIncidents.length}`);
+      doc.moveDown();
+
+      doc.fontSize(14).font('Helvetica-Bold').text('Incident Log');
+      if (weeklyIncidents.length === 0) {
+        doc.font('Helvetica').text('No incidents reported this week.');
+      } else {
+        for (const inc of weeklyIncidents) {
+          doc.font('Helvetica')
+            .text(`- [${inc.severity}] ${inc.incidentType}: ${inc.title} (${new Date(inc.reportedAt).toLocaleDateString()})`);
+        }
+      }
+      doc.moveDown();
+
+      doc.fontSize(10).fillColor('gray')
+        .text('This document is auto-generated by Spectra Operations Intelligence Platform.', 50, 750, { align: 'center', width: 500 });
 
       doc.end();
     });

@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/api";
+import { useRouter } from "next/navigation";
 import { Route, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -13,7 +14,7 @@ interface PatrolRecord {
   startTime: string;
   endTime: string | null;
   completionPercentage: number;
-  guard: { fullName: string };
+  guard: { id: string; fullName: string };
   route: { name: string; site: { name: string } };
 }
 
@@ -39,6 +40,7 @@ function getStatusBadge(status: string) {
 }
 
 export default function PatrolsPage() {
+  const router = useRouter();
   const [page, setPage] = useState(1);
 
   const { data, isLoading } = useQuery({
@@ -103,7 +105,12 @@ export default function PatrolsPage() {
                       {record.route.name}
                     </td>
                     <td className="px-6 py-4 text-foreground">
-                      {record.guard.fullName}
+                      <button
+                        onClick={() => router.push(`/guards/${record.guard.id}`)}
+                        className="hover:text-primary transition-colors"
+                      >
+                        {record.guard.fullName}
+                      </button>
                     </td>
                     <td className="px-6 py-4 text-foreground">
                       {record.route.site.name}

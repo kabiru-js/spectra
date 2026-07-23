@@ -4,12 +4,13 @@ import React, { useState } from 'react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { useRouter } from 'next/navigation';
 import { ClipboardCheck, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface AttendanceRecord {
   id: string;
-  guard: { fullName: string };
+  guard: { id: string; fullName: string };
   site: { name: string };
   checkInTime: string;
   checkOutTime: string | null;
@@ -43,6 +44,7 @@ function getStatusStyle(status: string) {
 }
 
 export default function AttendancePage() {
+  const router = useRouter();
   const [page, setPage] = useState(1);
 
   const { data, isLoading } = useQuery({
@@ -107,9 +109,12 @@ export default function AttendancePage() {
                         <div className="h-8 w-8 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-xs shrink-0">
                           {record.guard.fullName.substring(0, 2).toUpperCase()}
                         </div>
-                        <span className="font-medium text-foreground">
+                        <button
+                          onClick={() => router.push(`/guards/${record.guard.id}`)}
+                          className="font-medium text-foreground hover:text-primary transition-colors text-left"
+                        >
                           {record.guard.fullName}
-                        </span>
+                        </button>
                       </div>
                     </td>
                     <td className="px-6 py-4 text-foreground">{record.site.name}</td>

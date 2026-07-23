@@ -196,6 +196,31 @@ export class AuthService {
     }
   }
 
+  async updateProfile(userId: string, dto: { firstName?: string; lastName?: string; phone?: string; email?: string }) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException('User not found');
+
+    const data: any = {};
+    if (dto.firstName) data.firstName = dto.firstName;
+    if (dto.lastName) data.lastName = dto.lastName;
+    if (dto.phone) data.phone = dto.phone;
+    if (dto.email) {
+      const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
+      if (existing && existing.id !== userId) {
+        throw new ConflictException('Email already in use');
+      }
+      data.email = dto.email;
+    }
+
+    return this.prisma.user.update({
+      where: { id: userId },
+      data,
+      select: {
+        id: true, email: true, firstName: true, lastName: true, phone: true, role: true,
+      },
+    });
+  }
+
   async getMe(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },

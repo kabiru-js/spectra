@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
+import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import {
@@ -17,7 +18,7 @@ interface Incident {
   severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
   status: string;
   reportedAt: string;
-  site: { name: string };
+  site: { id: string; name: string };
   reporter: { firstName: string; lastName: string };
 }
 
@@ -129,7 +130,12 @@ export default function IncidentsPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="text-foreground">{incident.site.name}</span>
+                      <Link
+                        href={`/sites/${incident.site.id}`}
+                        className="text-foreground hover:text-primary transition-colors"
+                      >
+                        {incident.site.name}
+                      </Link>
                     </td>
                     <td className="px-6 py-4">
                       <span className="text-foreground">

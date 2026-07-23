@@ -8,6 +8,8 @@ export class DashboardService {
   async getStats(organizationId: string) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
 
     const [
       totalGuards,
@@ -21,6 +23,10 @@ export class DashboardService {
       todayAttendance,
       todayLate,
       todayAbsent,
+      todayFlagged,
+      totalPatrols,
+      completedPatrols,
+      inProgressPatrols,
     ] = await Promise.all([
       this.prisma.guard.count({ where: { organizationId } }),
       this.prisma.guard.count({ where: { organizationId, status: 'ACTIVE' } }),
@@ -42,23 +48,50 @@ export class DashboardService {
         },
       }),
       this.prisma.attendance.count({
-        where: { guard: { organizationId }, checkInTime: { gte: today } },
+        where: {
+          guard: { organizationId },
+          checkInTime: { gte: today, lt: tomorrow },
+          status: { not: 'ABSENT' },
+        },
       }),
       this.prisma.attendance.count({
         where: {
           guard: { organizationId },
-          checkInTime: { gte: today },
+          checkInTime: { gte: today, lt: tomorrow },
           isLate: true,
         },
       }),
       this.prisma.attendance.count({
-        where: { guard: { organizationId }, isAbsent: true },
+        where: {
+          guard: { organizationId },
+          checkInTime: { gte: today, lt: tomorrow },
+          status: 'ABSENT',
+        },
+      }),
+      this.prisma.attendance.count({
+        where: {
+          guard: { organizationId },
+          checkInTime: { gte: today, lt: tomorrow },
+          status: 'FLAGGED',
+        },
+      }),
+      this.prisma.patrolRecord.count({
+        where: { route: { site: { organizationId } } },
+      }),
+      this.prisma.patrolRecord.count({
+        where: { route: { site: { organizationId } }, status: 'COMPLETED' },
+      }),
+      this.prisma.patrolRecord.count({
+        where: { route: { site: { organizationId } }, status: 'IN_PROGRESS' },
       }),
     ]);
 
+    // Attendance rate: (non-absent active guards) / total active guards
     const attendanceRate =
       activeGuards > 0
-        ? Math.round(((activeGuards - todayAbsent) / activeGuards) * 1000) / 10
+        ? Math.round(
+            ((activeGuards - todayAbsent) / activeGuards) * 1000,
+          ) / 10
         : 100;
 
     return {
@@ -73,7 +106,11 @@ export class DashboardService {
       todayAttendance,
       todayLate,
       todayAbsent,
+      todayFlagged,
       attendanceRate,
+      totalPatrols,
+      completedPatrols,
+      inProgressPatrols,
     };
   }
 
@@ -93,6 +130,20 @@ export class DashboardService {
       _count: { id: true },
     });
     return sites.map((s) => ({ riskLevel: s.riskLevel, count: s._count.id }));
+  }
+
+  async getPatrolStats(organizationId: string) {
+    const total = await this.prisma.patrolRecord.count({
+      where: { route: { site: { organizationId } } },
+    });
+    const completed = await this.prisma.patrolRecord.count({
+      where: { route: { site: { organizationId } }, status: 'COMPLETED' },
+    });
+    return {
+      total,
+      completed,
+      rate: total > 0 ? Math.round((completed / total) * 100) : 100,
+    };
   }
 
   async getAttendanceTrend(organizationId: string) {
@@ -128,7 +179,7 @@ export class DashboardService {
   }
 
   async getRecentActivities(organizationId: string) {
-    const [recentIncidents, recentAttendance] = await Promise.all([
+    const [recentIncidents, recentAttendance, recentPatrols] = await Promise.all([
       this.prisma.incident.findMany({
         where: { site: { organizationId } },
         take: 5,
@@ -151,6 +202,18 @@ export class DashboardService {
           isLate: true,
         },
       }),
+      this.prisma.patrolRecord.findMany({
+        where: { route: { site: { organizationId } } },
+        take: 5,
+        orderBy: { startTime: 'desc' },
+        select: {
+          guard: { select: { fullName: true } },
+          route: { select: { name: true, site: { select: { name: true } } } },
+          status: true,
+          startTime: true,
+          completionPercentage: true,
+        },
+      }),
     ]);
 
     const activities: { type: string; text: string; time: Date }[] = [];
@@ -158,7 +221,7 @@ export class DashboardService {
     for (const inc of recentIncidents) {
       activities.push({
         type: 'incident',
-        text: `Incident reported: ${inc.incidentType} at ${inc.site.name}`,
+        text: `Incident reported: ${inc.incidentType} at ${inc.site?.name || 'unknown site'}`,
         time: inc.createdAt,
       });
     }
@@ -167,6 +230,13 @@ export class DashboardService {
         type: att.isLate ? 'late' : 'attendance',
         text: `Guard ${att.guard.fullName} checked in at ${att.site.name}`,
         time: att.checkInTime,
+      });
+    }
+    for (const patrol of recentPatrols) {
+      activities.push({
+        type: patrol.status === 'COMPLETED' ? 'patrol_completed' : 'patrol_started',
+        text: `Guard ${patrol.guard.fullName} ${patrol.status === 'COMPLETED' ? 'completed' : 'started'} patrol "${patrol.route.name}" at ${patrol.route.site.name} (${patrol.completionPercentage}%)`,
+        time: patrol.startTime,
       });
     }
 

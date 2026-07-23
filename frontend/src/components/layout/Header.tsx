@@ -293,11 +293,14 @@ export default function Header() {
         </div>
 
         {user && (
-          <div className="ml-2 flex items-center gap-2 border-l border-border pl-3">
+          <button
+            onClick={() => router.push('/account')}
+            className="ml-2 flex items-center gap-2 border-l border-border pl-3 hover:bg-secondary/50 rounded-lg pr-2 transition-colors"
+          >
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/20 text-xs font-bold text-primary">
               {user.firstName?.[0]}{user.lastName?.[0]}
             </div>
-            <div className="hidden md:block">
+            <div className="hidden md:block text-left">
               <p className="text-xs font-semibold text-foreground">
                 {user.firstName} {user.lastName}
               </p>
@@ -305,7 +308,7 @@ export default function Header() {
                 {user.role?.replace('_', ' ')}
               </p>
             </div>
-          </div>
+          </button>
         )}
       </div>
     </header>
